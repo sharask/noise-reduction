@@ -35,7 +35,7 @@ class Wiener:
         """
         Input :
             WAV_FILE
-            T_NOISE : float, Time in seconds /!\ Only works if stationnary noise is at the beginning of x /!\
+            T_NOISE : float, Time in seconds (!) Only works if stationnary noise is at the beginning of x (!)
             
         """
         # Constants are defined here
@@ -48,7 +48,7 @@ class Wiener:
         self.OFFSET = int(self.SHIFT*self.FRAME)
 
         # Hanning window and its energy Ew
-        self.WINDOW = sg.hann(self.FRAME)
+        self.WINDOW = sg.get_window('hann', self.FRAME)
         self.EW = np.sum(self.WINDOW)
 
         self.channels = np.arange(self.x.shape[1]) if self.x.shape != (self.x.size,)  else np.arange(1)
@@ -104,7 +104,10 @@ class Wiener:
         for channel in self.channels:
             for frame in noise_frames:
                 i_min, i_max = frame*self.OFFSET + self.N_NOISE[0], frame*self.OFFSET + self.FRAME + self.N_NOISE[0]
-                x_framed = self.x[i_min:i_max, channel]*self.WINDOW
+                if self.x.ndim == 1:
+                    x_framed = self.x[i_min:i_max] * self.WINDOW
+                else:
+                    x_framed = self.x[i_min:i_max, channel] * self.WINDOW
                 X_framed = fft(x_framed, self.NFFT)
                 Sbb[:, channel] = frame * Sbb[:, channel] / (frame + 1) + np.abs(X_framed)**2 / (frame + 1)
         return Sbb
@@ -137,7 +140,10 @@ class Wiener:
                 ############# Initialising Frame ###################################
                 # Temporal framing with a Hanning window
                 i_min, i_max = frame*self.OFFSET, frame*self.OFFSET + self.FRAME
-                x_framed = self.x[i_min:i_max, channel]*self.WINDOW
+                if self.x.ndim == 1:
+                    x_framed = self.x[i_min:i_max] * self.WINDOW
+                else:
+                    x_framed = self.x[i_min:i_max, channel] * self.WINDOW
 
                 # Zero padding x_framed
                 X_framed = fft(x_framed, self.NFFT)
@@ -151,8 +157,15 @@ class Wiener:
                 ############# Temporal estimated Signal ############################
                 # Estimated signals at each frame normalized by the shift value
                 temp_s_est = np.real(ifft(S)) * self.SHIFT
-                s_est[i_min:i_max, channel] += temp_s_est[:self.FRAME]  # Truncating zero padding
-        wav.write(self.WAV_FILE+'_wiener.wav', self.FS,s_est/s_est.max() )
+                if s_est.ndim == 1:
+                    s_est[i_min:i_max] += temp_s_est[:self.FRAME]  # Truncating zero padding
+                else:
+                    s_est[i_min:i_max, channel] += temp_s_est[:self.FRAME]  # Truncating zero padding
+
+        # Normalizing and converting to int16 to create a standard WAV file
+        s_est_normalized = s_est / np.max(np.abs(s_est))
+        s_est_int = np.int16(s_est_normalized * 32767)
+        wav.write(self.WAV_FILE+'_wiener.wav', self.FS, s_est_int)
 
     def wiener_two_step(self):
         """
@@ -171,13 +184,16 @@ class Wiener:
 
         # Initialising matrix to store previous values.
         # For readability purposes, -1 represents past frame values and 0 represents actual frame values.
-        S = np.zeros((2, self.NFFT), dtype='cfloat')
+        S = np.zeros((2, self.NFFT), dtype=np.complex128)
         for channel in self.channels:
             for frame in self.frames:
                 ############# Initialising Frame ###################################
                 # Temporal framing with a Hanning window
                 i_min, i_max = frame*self.OFFSET, frame*self.OFFSET + self.FRAME
-                x_framed = self.x[i_min:i_max, channel]*self.WINDOW
+                if self.x.ndim == 1:
+                    x_framed = self.x[i_min:i_max] * self.WINDOW
+                else:
+                    x_framed = self.x[i_min:i_max, channel] * self.WINDOW
 
                 # Zero padding x_framed
                 X_framed = fft(x_framed, self.NFFT)
@@ -203,9 +219,16 @@ class Wiener:
                 ############# Temporal estimated Signal ############################
                 # Estimated signal at frame normalized by the shift value
                 temp_s_est_tsnr = np.real(ifft(S_tsnr))*self.SHIFT
-                s_est_tsnr[i_min:i_max, channel] += temp_s_est_tsnr[:self.FRAME] # Truncating zero padding
+                if s_est_tsnr.ndim == 1:
+                    s_est_tsnr[i_min:i_max] += temp_s_est_tsnr[:self.FRAME] # Truncating zero padding
+                else:
+                    s_est_tsnr[i_min:i_max, channel] += temp_s_est_tsnr[:self.FRAME] # Truncating zero padding
 
                 ############# Update ###############################################
                 # Rolling matrix to update old values (Circshift in Matlab)
                 S = np.roll(S, 1, axis=0)
-        wav.write(self.WAV_FILE+'_wiener_two_step.wav', self.FS,s_est_tsnr/s_est_tsnr.max() )
+
+        # Normalizing and converting to int16 to create a standard WAV file
+        s_est_tsnr_normalized = s_est_tsnr / np.max(np.abs(s_est_tsnr))
+        s_est_tsnr_int = np.int16(s_est_tsnr_normalized * 32767)
+        wav.write(self.WAV_FILE+'_wiener_two_step.wav', self.FS, s_est_tsnr_int)

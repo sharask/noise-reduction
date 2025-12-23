@@ -2,7 +2,12 @@
 import noisereduction as nr
 import os
 
-WAV_FILE = os.getcwd() + '/example/noisefunkguitare'
+# WAV_FILE = os.getcwd() + '/example/noisefunkguitare'
+
+# WAV_FILE = os.getcwd() + '/example/noisy_speech'
+
+WAV_FILE = os.getcwd() + '/example/R2'
+
 noise_begin, noise_end = 0, 1
 
 noised_audio = nr.Wiener(WAV_FILE, noise_begin, noise_end)
